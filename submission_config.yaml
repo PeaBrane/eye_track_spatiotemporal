@@ -1,0 +1,21 @@
+dataset:
+  time_window: 10000
+  frames_per_segment: 50
+  spatial_downsample: [5, 5]
+  events_interpolation: bilinear
+  spatial_affine: true
+  temporal_flip: true
+  temporal_scale: true
+  temporal_shift: true
+
+model:
+  channels: [2, 8, 16, 32, 48, 64, 80, 96, 112, 128, 256]
+  n_depthwise_layers: 4
+  t_kernel_size: 5
+  detector_head: true
+  detector_depthwise: false
+
+trainer:
+  epochs: 200
+  batch_size: 32
+  device: cpu

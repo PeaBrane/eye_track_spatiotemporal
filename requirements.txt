@@ -1,0 +1,9 @@
+pandas  # to generate submission csv
+h5py  # to load data
+natsort  # to sort the data directories properly
+
+torch
+lightning  # easier training
+lightning-bolts  # for linear warmup cosine decay scheduler
+
+hydra-core

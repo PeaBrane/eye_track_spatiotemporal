@@ -1,0 +1,8 @@
+__pycache__
+event_data
+lightning_logs
+wandb
+outputs
+eye_tracking
+*.ipynb
+multirun*
