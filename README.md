@@ -6,7 +6,7 @@ Set up a virtual environment and install the required dependancies as follows:
 ```
 conda create -n eye_tracking python==3.10
 conda activate eye_tracking
-pip install requirements.txt
+pip install -r requirements.txt
 ```
 
 To reproduce our final `submission.csv` to the [Event-based Eye Tracking - AIS2024 CVPR Workshop](https://www.kaggle.com/competitions/event-based-eye-tracking-ais2024/data), 
