@@ -32,7 +32,7 @@ def streaming_inference(model, frames):
     return predictions
 
 
-config_path = 'submission_config.yaml'
+config_path = 'config_submission.yaml'
 checkpoint_path = 'weights/submission.ckpt'
 
 #config_path = '/home/scrouzet/AIS2024_CVPR/train_tenn/outputs/2024-03-22/06-03-29/lightning_logs/version_0/config.yaml'

@@ -14,9 +14,10 @@ model:
   t_kernel_size: 5
   detector_head: true
   detector_depthwise: true
-  full_conv3d : false
+  norms : mixed # ['mixed', 'all_bn', 'all_gn']
 
 trainer:
   epochs: 200
   batch_size: 32
   device: 0
+  activity_regularization : 0

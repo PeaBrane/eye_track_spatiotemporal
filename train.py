@@ -1,9 +1,10 @@
+import os
+import csv
+from datetime import datetime
 from functools import partial
 from pathlib import Path
 
 import hydra
-import numpy as np
-import pandas as pd
 import torch
 from lightning import LightningModule, Trainer
 from lightning.pytorch.callbacks import ModelCheckpoint
@@ -17,6 +18,19 @@ from eye_dataset import EyeTrackingDataset
 from tenn_model import TennSt
 from generate_val_results import check_val_score
 
+filename = 'results_ablation.csv'
+
+def flatten_2levels_dict(d, parent_key='', sep='_'):
+    """
+    Flatten a nested dictionary.
+    """
+    items = {}
+    for pk, pv in d.items():
+        parent_key = pk + sep
+        for ck, cv in pv.items():
+            items[pk+'__'+ck] = cv
+    return items
+
 
 class CustomModule(LightningModule):
     def __init__(self, data_path, config):
@@ -27,6 +41,7 @@ class CustomModule(LightningModule):
         self.batch_size = config.trainer.batch_size
         epochs = config.trainer.epochs
         detector_head = config.model.detector_head
+        activity_regularization = config.trainer.activity_regularization
         
         self.model = torch.compile(TennSt(**OC.to_container(config.model)))
         
@@ -36,7 +51,7 @@ class CustomModule(LightningModule):
         num_steps_per_epoch = len(self.trainset) // self.batch_size
         self.total_train_steps = epochs * num_steps_per_epoch
         
-        self.loss_fn = losses.tracking_loss if detector_head else losses.regression_loss
+        self.loss_fn = losses.Losses(detector_head, activity_regularization, self.model)
         self.metric_fn = partial(losses.p10_acc, detector_head=detector_head)
             
     def forward(self, input):
@@ -74,6 +89,7 @@ class CustomModule(LightningModule):
 
         # df = pd.DataFrame(predictions, columns=['row_id', 'x', 'y'])
         # df.to_csv(log_dir / 'submission.csv', index=False)
+    
     
     def training_step(self, batch, batch_idx):
         event, center, openness = batch
@@ -138,13 +154,35 @@ def main(config: OC):
         precision='16-mixed', 
     )
 
+    timestamp_start = datetime.now()
     trainer.fit(module)
+    timestamp_end = datetime.now()
 
     log_dir = Path(trainer.log_dir)
-    results = check_val_score(log_dir / "checkpoints" / "last.ckpt",
+    _, resmetrics = check_val_score(log_dir / "checkpoints" / "last.ckpt",
                               log_dir / "config.yaml",
                               remove_blinks=False, test_on_val=True)
-    print("\n\n\n\n")
+    resdict = flatten_2levels_dict(config)
+    resdict['time_start'] = timestamp_start.isoformat()
+    resdict['time_end'] = timestamp_end.isoformat()
+    resdict['training_duration'] = int((timestamp_end-timestamp_start).total_seconds()/60) # training duration in minutes
+    resdict['params'] = sum(p.numel() for p in module.parameters())
+    resdict['params_trainable'] = sum(p.numel() for p in module.parameters() if p.requires_grad)
+
+    resdict['logdir'] = trainer.log_dir
+    resdict['val_p10'] = resmetrics['p10']
+    resdict['val_distance'] = resmetrics['distance']
+    resdict['event_density'] = resmetrics['mean_event_density']
+    resdict['macs'] = resmetrics['macs_per_layer']
+
+    # Write the header and results to the CSV file
+    with open(os.path.dirname(os.path.realpath(__file__))+'/'+filename, 'a', newline='') as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=resdict.keys())
+        if csvfile.tell() == 0:
+            writer.writeheader()  # Write header only if file is empty
+        row = {**resdict}
+        writer.writerow(row)
+    print("\n\n")
 
 
 if __name__ == "__main__":

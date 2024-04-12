@@ -1,5 +1,79 @@
+import copy
+import math
+
 import torch
 from torch.nn import functional as F
+
+
+class OutputHook(list):
+    """ Hook to capture module outputs.
+    """
+    def __call__(self, module, input, output):
+        self.append(output)
+    
+    
+class MacsEstimationHook:
+    def __init__(self, num_conv_layers):
+        self.num_conv_layers = num_conv_layers
+        
+        self.layer_id = 0
+        self._params_per_layer = torch.zeros(num_conv_layers)
+        self._macs_per_layer = torch.zeros(num_conv_layers)
+        self._macs_per_layer_with_sparsity = torch.zeros(num_conv_layers)
+        
+        self.nonzeros = torch.zeros(num_conv_layers)
+        self.totals = torch.zeros(num_conv_layers)
+    
+    def __call__(self, module, input, output):
+        output_size = math.prod((output.shape[1],) + output.shape[3:])
+        macs_weight = output_size * math.prod(module.weight.shape[1:])
+        macs_bias = output_size
+        
+        self._params_per_layer[self.layer_id] = module.weight.numel() + output.shape[1]
+        
+        macs = macs_weight + macs_bias
+        self._macs_per_layer[self.layer_id] = macs
+        
+        self.nonzeros[self.layer_id] += (input[0] != 0).sum().item()
+        self.totals[self.layer_id] += input[0].numel()
+        self._macs_per_layer_with_sparsity[self.layer_id] = macs * self.nonzeros[self.layer_id] / self.totals[self.layer_id]
+        
+        self.layer_id = (self.layer_id + 1) % self.num_conv_layers
+        
+    @property
+    def macs_per_layer(self):
+        return self._macs_per_layer.round().long()
+    
+    @property
+    def macs_per_layer_with_sparsity(self):
+        return self._macs_per_layer_with_sparsity.round().long()
+    
+    @property
+    def params_per_layer(self):
+        return self._params_per_layer.round().long()
+
+
+class RegularizationLoss():
+    def __init__(self, reg_factor, model):
+
+        self.reg_factor = reg_factor # 1e-1 was awesome!!!
+        if reg_factor > 0:
+            # Hook for regularization of activations of ReLUs
+            self.output_hook = OutputHook()
+            for mm in model.modules():
+                if isinstance(mm, torch.nn.ReLU):
+                    mm.register_forward_hook(self.output_hook)
+
+    def __call__(self, ):
+        if self.reg_factor > 0:
+            l1_penalty = 0.
+            for output in self.output_hook:
+                l1_penalty += torch.norm(output, 1)/output.numel()
+            l1_penalty *= self.reg_factor
+            self.output_hook.clear()
+            return l1_penalty
+        else:
+            return 0.
 
 
 def regression_loss(pred, center, openness):
@@ -46,26 +120,47 @@ def tracking_loss(pred, center, openness, gamma=2):
     return focal_loss[valid_mask].sum() / valid_mask.sum()
 
 
+class Losses():
+    """ 
+    Gathers the different losses
+    """
+    def __init__(self, detector_head, reg_factor, model):
+        self.prediction_loss = tracking_loss if detector_head else regression_loss
+        self.regularization_loss = RegularizationLoss(reg_factor, model)
+
+    def __call__(self, pred, center, openness):
+        loss = self.prediction_loss(pred, center, openness)
+        loss += self.regularization_loss()
+        return loss
+
+
 def process_detector_prediction(pred):
     device = pred.device
-    batch_size, _, frames, height, width = pred.shape
-    
-    pred_pupil, pred_x_mod, pred_y_mod = pred.moveaxis(1, 0)
-    pred_x_mod = torch.sigmoid(pred_x_mod)
-    pred_y_mod = torch.sigmoid(pred_y_mod)
-    
-    pupil_ind = pred_pupil.flatten(-2, -1).argmax(-1)  # (batch, frames)
-    pupil_ind_x = pupil_ind % width
-    pupil_ind_y = pupil_ind // width
-    
-    batch_range = torch.arange(batch_size, device=device).repeat_interleave(frames)
-    frames_range = torch.arange(frames, device=device).repeat(batch_size)
-    
-    pred_x_mod = pred_x_mod[batch_range, frames_range, pupil_ind_y.flatten(), pupil_ind_x.flatten()]
-    pred_y_mod = pred_y_mod[batch_range, frames_range, pupil_ind_y.flatten(), pupil_ind_x.flatten()]
 
-    x = (pupil_ind_x + pred_x_mod.view(batch_size, frames)) / width
-    y = (pupil_ind_y + pred_y_mod.view(batch_size, frames)) / height
+    if len(pred.shape)==3: # basic head case
+        batch_size, _, frames = pred.shape
+        x = torch.sigmoid(pred[:,0,:])
+        y = torch.sigmoid(pred[:,1,:])
+        
+    else: # centernet head case
+        batch_size, _, frames, height, width = pred.shape
+        
+        pred_pupil, pred_x_mod, pred_y_mod = pred.moveaxis(1, 0)
+        pred_x_mod = torch.sigmoid(pred_x_mod)
+        pred_y_mod = torch.sigmoid(pred_y_mod)
+        
+        pupil_ind = pred_pupil.flatten(-2, -1).argmax(-1)  # (batch, frames)
+        pupil_ind_x = pupil_ind % width
+        pupil_ind_y = pupil_ind // width
+        
+        batch_range = torch.arange(batch_size, device=device).repeat_interleave(frames)
+        frames_range = torch.arange(frames, device=device).repeat(batch_size)
+        
+        pred_x_mod = pred_x_mod[batch_range, frames_range, pupil_ind_y.flatten(), pupil_ind_x.flatten()]
+        pred_y_mod = pred_y_mod[batch_range, frames_range, pupil_ind_y.flatten(), pupil_ind_x.flatten()]
+
+        x = (pupil_ind_x + pred_x_mod.view(batch_size, frames)) / width
+        y = (pupil_ind_y + pred_y_mod.view(batch_size, frames)) / height
     
     return torch.stack([x, y], dim=1)
     
