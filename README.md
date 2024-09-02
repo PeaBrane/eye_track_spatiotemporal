@@ -1,5 +1,7 @@
 # TENNs-Eye
 
+![network](network_architecture.png)
+
 ## Description
 
 TENNs-Eye is a lightweight spatio-temporal network for online eye tracking with event camera, belonging to the class of [TENNs](https://brainchip.com/tenns-a-new-approach-to-streaming-and-sequential-data/) (Temporal Neural Networks) models by Brainchip.
