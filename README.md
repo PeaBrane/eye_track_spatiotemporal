@@ -1,5 +1,7 @@
 # TENNs-Eye
 
+This repository has been moved to [Brainchip-Inc/TENNs-Eye](https://github.com/Brainchip-Inc/TENNs-Eye).
+
 ![network](network_architecture.png)
 
 ## Description
