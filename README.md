@@ -4,7 +4,7 @@
 
 ## Description
 
-TENNs-Eye is a lightweight spatio-temporal network for online eye tracking with event camera, belonging to the class of [TENNs](https://brainchip.com/tenns-a-new-approach-to-streaming-and-sequential-data/) (Temporal Neural Networks) models by Brainchip.
+TENNs-Eye is a lightweight spatio-temporal network for online eye tracking with event camera, belonging to the class of [TENNs](https://brainchip.com/tenns-a-new-approach-to-streaming-and-sequential-data/) (Temporal Neural Networks) models by Brainchip. It is a causal spatio-temporal convolutional network, that can be efficiently configured for real-time inference with the use of FIFO buffers. We applied this network to the task of [Event-based Eye Tracking](https://www.kaggle.com/competitions/event-based-eye-tracking-ais2024/data), and achieved [third place on the p10 tolerence metric, but first place on all other metrics](https://arxiv.org/pdf/2404.11770) including p5, p3, p1, l2, and l1.
 
 ## Instructions
 
